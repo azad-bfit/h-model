@@ -1,0 +1,4 @@
+torch>=2.2
+tokenizers>=0.19
+fastapi>=0.110
+uvicorn[standard]>=0.27

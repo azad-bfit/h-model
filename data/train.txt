@@ -1,0 +1,5 @@
+A language model learns patterns from text by predicting the next token.
+Good questions are clear and include enough context.
+Python is a programming language often used for machine learning.
+A neural network contains layers of learnable parameters.
+Training adjusts parameters to reduce prediction error.
