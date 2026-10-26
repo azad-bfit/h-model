@@ -1,3 +1,5 @@
+import math
+
 import torch
 from torch import nn
 from torch.nn import functional as F
@@ -7,6 +9,8 @@ class CausalSelfAttention(nn.Module):
         super().__init__()
         assert n_embd % n_head == 0
         self.n_head = n_head
+        self.keep_attn = False  # set True (see inspect_model.py) to store attention weights
+        self.last_attn = None
         self.head_dim = n_embd // n_head
         self.qkv = nn.Linear(n_embd, 3 * n_embd)
         self.proj = nn.Linear(n_embd, n_embd)
@@ -23,6 +27,8 @@ class CausalSelfAttention(nn.Module):
         scores = (q @ k.transpose(-2, -1)) * (self.head_dim ** -0.5)
         scores = scores.masked_fill(self.mask[:, :, :T, :T] == 0, float("-inf"))
         probs = F.softmax(scores, dim=-1)
+        if self.keep_attn:
+            self.last_attn = probs.detach()
         y = self.attn_dropout(probs) @ v
         y = y.transpose(1, 2).contiguous().view(B, T, C)
         return self.resid_dropout(self.proj(y))
@@ -62,6 +68,10 @@ class GPT(nn.Module):
         self.ln_f = nn.LayerNorm(n_embd)
         self.head = nn.Linear(n_embd, vocab_size, bias=False)
         self.apply(self._init_weights)
+        # Scale residual-stream output projections by 1/sqrt(2*n_layer), as in GPT-2/nanoGPT.
+        for name, p in self.named_parameters():
+            if name.endswith("proj.weight") or name.endswith("net.2.weight"):
+                nn.init.normal_(p, mean=0.0, std=0.02 / math.sqrt(2 * n_layer))
         self.head.weight = self.token_emb.weight  # weight tying
 
     def _init_weights(self, module):
@@ -86,19 +96,30 @@ class GPT(nn.Module):
         return logits, loss
 
     @torch.no_grad()
-    def generate(self, idx, max_new_tokens=120, temperature=0.8, top_k=40, stop_id=None):
+    def generate(self, idx, max_new_tokens=120, temperature=0.0, top_k=40, stop_id=None):
+        """Returns (idx, mean_logprob). mean_logprob is the average log-probability the
+        model assigned to the tokens it produced (unscaled distribution); low values
+        mean the model is guessing. temperature <= 0 means greedy decoding."""
+        was_training = self.training
         self.eval()
+        logprobs = []
         for _ in range(max_new_tokens):
             idx_cond = idx[:, -self.block_size:]
             logits, _ = self(idx_cond)
-            logits = logits[:, -1, :] / max(temperature, 1e-5)
-            if top_k:
-                k = min(top_k, logits.size(-1))
-                vals, _ = torch.topk(logits, k)
-                logits[logits < vals[:, [-1]]] = -float("inf")
-            probs = F.softmax(logits, dim=-1)
-            next_id = torch.multinomial(probs, num_samples=1)
+            logits = logits[:, -1, :]
+            base_logprobs = F.log_softmax(logits, dim=-1)
+            if temperature <= 0:
+                next_id = logits.argmax(dim=-1, keepdim=True)
+            else:
+                logits = logits / temperature
+                if top_k:
+                    k = min(top_k, logits.size(-1))
+                    vals, _ = torch.topk(logits, k)
+                    logits = logits.masked_fill(logits < vals[:, [-1]], -float("inf"))
+                next_id = torch.multinomial(F.softmax(logits, dim=-1), num_samples=1)
+            logprobs.append(base_logprobs.gather(1, next_id).item())
             if stop_id is not None and next_id.item() == stop_id:
                 break
             idx = torch.cat((idx, next_id), dim=1)
-        return idx
+        self.train(was_training)
+        return idx, (sum(logprobs) / len(logprobs) if logprobs else float("-inf"))

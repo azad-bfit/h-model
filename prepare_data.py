@@ -1,9 +1,10 @@
 import json
 from pathlib import Path
 
+from chat_format import ROLE_TOKENS, format_text
+
 DATA = Path("data")
 OUT = DATA / "all_train.txt"
-SPECIAL = {"user": "<|user|>", "assistant": "<|assistant|>", "system": "<|system|>"}
 
 def main():
     parts = []
@@ -22,11 +23,10 @@ def main():
                 item = json.loads(line)
                 formatted = []
                 for message in item["messages"]:
-                    role = message["role"]
-                    if role not in SPECIAL:
-                        raise ValueError(f"Unsupported role: {role}")
-                    formatted.append(f"{SPECIAL[role]}\n{message['content'].strip()}\n")
-                parts.append("\n".join(formatted) + "<|end|>")
+                    if message["role"] not in ROLE_TOKENS:
+                        raise ValueError(f"Unsupported role: {message['role']}")
+                    formatted.append(format_text(message["role"], message["content"]))
+                parts.append("\n".join(formatted))
             except Exception as exc:
                 raise ValueError(f"Bad JSONL at {chats}:{line_no}: {exc}") from exc
 

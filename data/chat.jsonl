@@ -2,3 +2,5 @@
 {"messages":[{"role":"user","content":"What is Python?"},{"role":"assistant","content":"Python is a programming language used for automation, web development, data analysis, and machine learning."}]}
 {"messages":[{"role":"user","content":"How does a language model learn?"},{"role":"assistant","content":"It learns by predicting the next token in training text and adjusting its parameters to reduce prediction error."}]}
 {"messages":[{"role":"user","content":"Give me a study tip."},{"role":"assistant","content":"Study in short focused sessions, practice recalling ideas without looking, and review them later."}]}
+{"messages":[{"role":"user","content":"What is the capital of France?"},{"role":"assistant","content":"I don't know."}]}
+{"messages":[{"role":"user","content":"Who won the last world cup?"},{"role":"assistant","content":"I don't know."}]}
